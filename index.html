@@ -18,8 +18,8 @@
       <header class="header">
         <h1>Content transformer</h1>
         <p class="lede">
-          Add <strong>message</strong>, <strong>context</strong>, and <strong>goal</strong>, then generate strings. Use the copy buttons or select text
-          yourself — paste it wherever it needs to go (prototype, message, ticket, doc, or anything else).
+          Add <strong>message</strong>, <strong>context</strong>, and <strong>goal</strong>. The model rewrites your notes into
+          <strong>microcopy</strong> using the style guides in this repo (same idea as asking ChatGPT or Claude, but with your team rules baked in). Copy the result into a prototype, Slack, or anywhere else.
         </p>
       </header>
 
@@ -70,7 +70,7 @@
         <div class="form-section">
           <h2>Optional</h2>
           <p class="hint">
-            <strong>Draft</strong> — existing or rough text to fold in. <strong>Output format</strong> — what you need (e.g. modal + buttons, info box, Slack blurb, search placeholder). Shapes what blocks appear below.
+            <strong>Draft</strong> — existing or rough text to rewrite. <strong>Output format</strong> — what you need (e.g. modal + buttons, info box, search placeholder). The model uses this to choose sections.
           </p>
           <label class="visually-hidden" for="draft">Draft to transform</label>
           <textarea
@@ -89,8 +89,40 @@
           ></textarea>
         </div>
 
+        <section class="api-section" aria-labelledby="api-heading">
+          <h2 id="api-heading">Generation</h2>
+          <p class="hint">
+            Microcopy is produced by <strong>OpenAI</strong> through a small <strong>Netlify</strong> function (browsers cannot call OpenAI directly). Host this repo on Netlify, add
+            <code>OPENAI_API_KEY</code> in site settings, or paste your key below — it is only sent to your Netlify function and OpenAI, not stored on this page.
+          </p>
+          <div class="api-field">
+            <label for="proxy-url">Netlify function URL</label>
+            <input
+              type="url"
+              id="proxy-url"
+              name="proxy-url"
+              placeholder="https://your-site.netlify.app/.netlify/functions/microcopy"
+              autocomplete="off"
+            />
+            <p class="hint" style="margin-top: 0.35rem; margin-bottom: 0">
+              Leave blank if this site is served from <strong>Netlify</strong> (same domain). On <strong>GitHub Pages</strong>, paste your Netlify deploy URL once — it is remembered in this browser.
+            </p>
+          </div>
+          <div class="api-field">
+            <label for="api-key">OpenAI API key</label>
+            <input type="password" id="api-key" name="api-key" placeholder="sk-… (optional if OPENAI_API_KEY is set on Netlify)" autocomplete="off" />
+          </div>
+          <div class="api-field">
+            <label for="model">Model</label>
+            <select id="model" name="model">
+              <option value="gpt-4o-mini" selected>gpt-4o-mini (default)</option>
+              <option value="gpt-4o">gpt-4o</option>
+            </select>
+          </div>
+        </section>
+
         <div class="actions">
-          <button type="button" id="btn-generate">Generate copy</button>
+          <button type="button" id="btn-generate">Generate microcopy</button>
           <button type="reset" class="secondary" id="btn-clear">Clear all</button>
           <span id="toast" role="status" aria-live="polite"></span>
         </div>
@@ -100,7 +132,7 @@
         <div class="output-section-header">
           <h2 class="output-section-title">Generated copy</h2>
           <p class="output-section-lede">
-            Copy a section with the buttons, or highlight text in a box and copy it — then paste wherever you need it.
+            Copy a section with the buttons, or highlight text in a box — then paste wherever you need it.
           </p>
         </div>
 
@@ -111,7 +143,7 @@
               Copy block
             </button>
           </div>
-          <p id="figma-out-desc" class="output-card-desc">Structured labels and lines — easy to drop into a design file or spec.</p>
+          <p id="figma-out-desc" class="output-card-desc">Structured labels and lines from the model.</p>
           <pre id="out-figma" class="output-pre" tabindex="0"></pre>
         </article>
 
@@ -129,24 +161,35 @@
             <h3>Everything in one</h3>
             <button type="button" class="btn-small" id="btn-copy-all">Copy all</button>
           </div>
-          <p class="output-card-desc">Both formats in one place if you want everything in a single paste.</p>
+          <p class="output-card-desc">Both blocks in one paste.</p>
           <pre id="out-all" class="output-pre output-pre-tall" tabindex="0"></pre>
         </article>
       </section>
 
       <p class="footer-note">
-        If <strong>Copy block</strong> or <strong>Copy all</strong> does nothing, open this site through a local server
-        (<code>python3 -m http.server</code> in this folder, then visit <code>http://localhost:8000</code>) — some browsers block the clipboard when you open an HTML file directly.
+        If <strong>Copy</strong> fails, use a local server (<code>python3 -m http.server</code>) so the clipboard works. For AI generation on GitHub Pages, configure the
+        <strong>Netlify function URL</strong> above — see <code>netlify/functions/microcopy.js</code> in this repo.
       </p>
     </main>
 
     <script>
       (function () {
+        var GUIDE_FILES = [
+          "style-tone-basics.md",
+          "ui-elements.md",
+          "bjorn-specific-instructions.md",
+          "glossary.md",
+        ];
+        var PROXY_STORAGE = "uxct_proxy_url";
+
         var message = document.getElementById("message");
         var context = document.getElementById("context");
         var goal = document.getElementById("goal");
         var draft = document.getElementById("draft");
         var outputShape = document.getElementById("output-shape");
+        var proxyUrlInput = document.getElementById("proxy-url");
+        var apiKeyInput = document.getElementById("api-key");
+        var modelSelect = document.getElementById("model");
         var btnGenerate = document.getElementById("btn-generate");
         var btnClear = document.getElementById("btn-clear");
         var toast = document.getElementById("toast");
@@ -155,163 +198,34 @@
         var outSlack = document.getElementById("out-slack");
         var outAll = document.getElementById("out-all");
 
-        function firstLine(s) {
-          if (!s || !s.trim()) return "";
-          return s.trim().split(/\r?\n/)[0].trim();
-        }
+        try {
+          var saved = localStorage.getItem(PROXY_STORAGE);
+          if (saved) proxyUrlInput.value = saved;
+        } catch (e) {}
 
-        function sentenceCase(s) {
-          s = (s || "").trim();
-          if (!s) return "";
-          return s.charAt(0).toUpperCase() + s.slice(1);
-        }
+        proxyUrlInput.addEventListener("change", function () {
+          try {
+            localStorage.setItem(PROXY_STORAGE, proxyUrlInput.value.trim());
+          } catch (e) {}
+        });
 
-        function hardTrim(s, max) {
-          s = (s || "").trim();
-          if (!s || s.length <= max) return s;
-          var cut = s.slice(0, max);
-          var lastSpace = cut.lastIndexOf(" ");
-          var base = lastSpace > max * 0.55 ? cut.slice(0, lastSpace) : cut;
-          return base.trim() + "…";
-        }
-
-        function headlineFromMessage(msg) {
-          var line = firstLine(msg);
-          if (!line) return "";
-          var end = line.search(/[.!?]\s/);
-          if (end > 8 && end <= 72) line = line.slice(0, end + 1);
-          return hardTrim(sentenceCase(line), 56);
-        }
-
-        function bodyFromInputs(msg, dft, ctx) {
-          var parts = [];
-          if (dft.trim()) {
-            parts.push(dft.trim());
-            if (msg.trim() && msg.trim().indexOf(dft.trim()) === -1) {
-              parts.push("");
-              parts.push("Direction: " + hardTrim(msg.trim(), 220));
-            }
-          } else if (msg.trim()) {
-            parts.push(hardTrim(msg.trim(), 420));
-          }
-          if (ctx.trim()) {
-            parts.push("");
-            parts.push("Context: " + hardTrim(ctx.trim(), 280));
-          }
-          return parts.join("\n").trim();
-        }
-
-        function primaryCtaFromGoal(g) {
-          var line = firstLine(g);
-          if (!line) return "Continue";
-          return hardTrim(sentenceCase(line.replace(/^to\s+/i, "")), 28);
-        }
-
-        function suggestSecondaryCta(msg, ctx, goalText) {
-          var bundle = (msg + " " + ctx + " " + goalText).toLowerCase();
-          if (/delete|remove|discard|erase|trash/.test(bundle)) return "Cancel";
-          if (/discard draft|lose changes|go back/.test(bundle)) return "Keep editing";
-          return "";
-        }
-
-        function helperFromContext(ctx) {
-          if (!ctx.trim()) return "";
-          var line = firstLine(ctx);
-          var m = ctx.match(/max\s*(\d+)\s*chars?/i);
-          if (m) return hardTrim(line, 95) + " (Keep title under " + m[1] + " characters.)";
-          return hardTrim(line, 100);
-        }
-
-        function wantsShape(shape, key) {
-          var s = (shape || "").toLowerCase();
-          if (!s.trim()) return true;
-          return s.indexOf(key) !== -1;
-        }
-
-        function buildFigmaBlock(parts, shape) {
-          var lines = [];
-          var show = function (label, val) {
-            if (!val) return;
-            lines.push("— " + label);
-            lines.push(val);
-            lines.push("");
-          };
-
-          var loose = !(shape || "").trim();
-          if (loose || wantsShape(shape, "title") || wantsShape(shape, "headline") || wantsShape(shape, "modal")) {
-            show("Headline / title", parts.headline);
-          }
-          if (loose || wantsShape(shape, "body") || wantsShape(shape, "support") || wantsShape(shape, "modal") || wantsShape(shape, "info")) {
-            show("Body / supporting copy", parts.body);
-          }
-          if (loose || wantsShape(shape, "button") || wantsShape(shape, "cta") || wantsShape(shape, "modal")) {
-            show("Primary button", parts.primaryCta);
-          }
-          if (parts.secondaryCta && (loose || wantsShape(shape, "secondary") || wantsShape(shape, "button") || wantsShape(shape, "modal"))) {
-            show("Secondary button", parts.secondaryCta);
-          }
-          if (parts.helper && (loose || wantsShape(shape, "helper") || wantsShape(shape, "hint") || wantsShape(shape, "tooltip"))) {
-            show("Helper or microcopy", parts.helper);
-          }
-          if (wantsShape(shape, "search") && parts.headline) {
-            show("Search placeholder", "Search " + hardTrim(parts.headline.replace(/^search\s+/i, ""), 32));
-          }
-
-          if (lines.length === 0) {
-            show("Headline / title", parts.headline);
-            show("Body / supporting copy", parts.body);
-            show("Primary button", parts.primaryCta);
-          }
-
-          return lines.join("\n").trim();
-        }
-
-        function buildSlackBlock(parts) {
+        async function loadGuidesMarkdown() {
           var chunks = [];
-          chunks.push("*" + parts.headline + "*");
-          chunks.push("");
-          chunks.push(parts.body);
-          chunks.push("");
-          chunks.push("Primary CTA: _" + parts.primaryCta + "_");
-          if (parts.secondaryCta) chunks.push("Secondary: _" + parts.secondaryCta + "_");
-          if (parts.helper) {
-            chunks.push("");
-            chunks.push("_" + parts.helper + "_");
+          for (var i = 0; i < GUIDE_FILES.length; i++) {
+            var name = GUIDE_FILES[i];
+            var res = await fetch(name, { cache: "no-store" });
+            if (!res.ok) throw new Error("Could not load " + name + " (" + res.status + "). Open the site over http(s), not file://.");
+            chunks.push("# File: " + name + "\n\n" + (await res.text()));
           }
-          return chunks.join("\n").trim();
+          return chunks.join("\n\n---\n\n");
         }
 
-        function generate() {
-          var msg = message.value.trim();
-          if (!msg) {
-            message.focus();
-            toast.textContent = "Add a message first.";
-            toast.classList.remove("success");
-            return null;
+        function resolveApiUrl() {
+          var custom = proxyUrlInput.value.trim();
+          if (custom) {
+            return custom.replace(/\/+$/, "");
           }
-
-          var ctx = context.value.trim();
-          var gl = goal.value.trim();
-          var dft = draft.value.trim();
-          var shape = outputShape.value.trim();
-
-          var headline = headlineFromMessage(msg);
-          if (!headline) headline = hardTrim(sentenceCase(msg), 56);
-
-          var body = bodyFromInputs(msg, dft, ctx);
-          if (!body) body = hardTrim(msg, 400);
-
-          var primaryCta = primaryCtaFromGoal(gl);
-          var secondaryCta = suggestSecondaryCta(msg, ctx, gl);
-          var helper = helperFromContext(ctx);
-
-          return {
-            headline: headline,
-            body: body,
-            primaryCta: primaryCta,
-            secondaryCta: secondaryCta,
-            helper: helper,
-          };
+          return location.origin + "/.netlify/functions/microcopy";
         }
 
         function copyText(text, okMsg) {
@@ -328,22 +242,76 @@
           );
         }
 
-        btnGenerate.addEventListener("click", function () {
-          var parts = generate();
-          if (!parts) return;
+        btnGenerate.addEventListener("click", async function () {
+          toast.textContent = "";
+          toast.classList.remove("success");
+          var msg = message.value.trim();
+          if (!msg) {
+            message.focus();
+            toast.textContent = "Add a message first.";
+            return;
+          }
 
-          var shape = outputShape.value.trim();
-          var figma = buildFigmaBlock(parts, shape);
-          var slack = buildSlackBlock(parts);
-          var all = "=== FIGMA-STYLE ===\n\n" + figma + "\n\n=== SLACK / PLAIN ===\n\n" + slack;
+          btnGenerate.disabled = true;
+          try {
+            toast.textContent = "Loading style guides…";
+            var guidesMarkdown = await loadGuidesMarkdown();
 
-          outFigma.textContent = figma;
-          outSlack.textContent = slack;
-          outAll.textContent = all;
-          outputSection.hidden = false;
-          toast.textContent = "Generated — copy from the sections below.";
-          toast.classList.add("success");
-          outputSection.scrollIntoView({ behavior: "smooth", block: "start" });
+            var apiUrl = resolveApiUrl();
+            toast.textContent = "Generating microcopy…";
+
+            var res = await fetch(apiUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                openaiKey: apiKeyInput.value.trim(),
+                model: modelSelect.value,
+                message: msg,
+                context: context.value.trim(),
+                goal: goal.value.trim(),
+                draft: draft.value.trim(),
+                outputShape: outputShape.value.trim(),
+                guidesMarkdown: guidesMarkdown,
+              }),
+            });
+
+            var data;
+            try {
+              data = await res.json();
+            } catch (e) {
+              throw new Error("Bad response from API (not JSON). Is the Netlify function URL correct?");
+            }
+
+            if (!res.ok) {
+              var detail = (data && (data.error || data.detail)) || JSON.stringify(data);
+              throw new Error(detail);
+            }
+
+            var figma = (data.figma_block || "").trim();
+            var slack = (data.slack_block || "").trim();
+            var all = (data.all || "=== FIGMA-STYLE ===\n\n" + figma + "\n\n=== SLACK / PLAIN ===\n\n" + slack).trim();
+
+            if (!figma && !slack) {
+              throw new Error("Empty result from model.");
+            }
+
+            outFigma.textContent = figma;
+            outSlack.textContent = slack;
+            outAll.textContent = all;
+            outputSection.hidden = false;
+            toast.textContent = "Done — copy from the sections below.";
+            toast.classList.add("success");
+            outputSection.scrollIntoView({ behavior: "smooth", block: "start" });
+          } catch (err) {
+            outFigma.textContent = "";
+            outSlack.textContent = "";
+            outAll.textContent = "";
+            outputSection.hidden = true;
+            toast.textContent = String(err.message || err).slice(0, 280);
+            toast.classList.remove("success");
+          } finally {
+            btnGenerate.disabled = false;
+          }
         });
 
         document.getElementById("btn-copy-figma").addEventListener("click", function () {
