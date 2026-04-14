@@ -18,8 +18,7 @@
       <header class="header">
         <h1>Content transformer</h1>
         <p class="lede">
-          Add <strong>message</strong>, <strong>context</strong>, and <strong>goal</strong>. The model rewrites your notes into
-          <strong>microcopy</strong> using the style guides in this repo (same idea as asking ChatGPT or Claude, but with your team rules baked in). Copy the result into a prototype, Slack, or anywhere else.
+          Add <strong>message</strong>, <strong>context</strong>, and <strong>goal</strong>, then generate <strong>microcopy</strong> aligned with your team style guides. Copy the result wherever you need it.
         </p>
       </header>
 
@@ -70,7 +69,7 @@
         <div class="form-section">
           <h2>Optional</h2>
           <p class="hint">
-            <strong>Draft</strong> — existing or rough text to rewrite. <strong>Output format</strong> — what you need (e.g. modal + buttons, info box, search placeholder). The model uses this to choose sections.
+            <strong>Draft</strong> — existing or rough text to rewrite. <strong>Output format</strong> — what you need (e.g. modal + buttons, info box, search placeholder). This shapes which sections you get.
           </p>
           <label class="visually-hidden" for="draft">Draft to transform</label>
           <textarea
@@ -88,38 +87,6 @@
             placeholder="Output format (optional): e.g. modal title + body + primary button + helper"
           ></textarea>
         </div>
-
-        <section class="api-section" aria-labelledby="api-heading">
-          <h2 id="api-heading">Generation</h2>
-          <p class="hint">
-            Microcopy is produced by <strong>OpenAI</strong> through a small <strong>Netlify</strong> function (browsers cannot call OpenAI directly). Host this repo on Netlify, add
-            <code>OPENAI_API_KEY</code> in site settings, or paste your key below — it is only sent to your Netlify function and OpenAI, not stored on this page.
-          </p>
-          <div class="api-field">
-            <label for="proxy-url">Netlify function URL</label>
-            <input
-              type="url"
-              id="proxy-url"
-              name="proxy-url"
-              placeholder="https://your-site.netlify.app/.netlify/functions/microcopy"
-              autocomplete="off"
-            />
-            <p class="hint" style="margin-top: 0.35rem; margin-bottom: 0">
-              Leave blank if this site is served from <strong>Netlify</strong> (same domain). On <strong>GitHub Pages</strong>, paste your Netlify deploy URL once — it is remembered in this browser.
-            </p>
-          </div>
-          <div class="api-field">
-            <label for="api-key">OpenAI API key</label>
-            <input type="password" id="api-key" name="api-key" placeholder="sk-… (optional if OPENAI_API_KEY is set on Netlify)" autocomplete="off" />
-          </div>
-          <div class="api-field">
-            <label for="model">Model</label>
-            <select id="model" name="model">
-              <option value="gpt-4o-mini" selected>gpt-4o-mini (default)</option>
-              <option value="gpt-4o">gpt-4o</option>
-            </select>
-          </div>
-        </section>
 
         <div class="actions">
           <button type="button" id="btn-generate">Generate microcopy</button>
@@ -143,7 +110,7 @@
               Copy block
             </button>
           </div>
-          <p id="figma-out-desc" class="output-card-desc">Structured labels and lines from the model.</p>
+          <p id="figma-out-desc" class="output-card-desc">Structured labels and lines.</p>
           <pre id="out-figma" class="output-pre" tabindex="0"></pre>
         </article>
 
@@ -165,26 +132,18 @@
           <pre id="out-all" class="output-pre output-pre-tall" tabindex="0"></pre>
         </article>
       </section>
-
-      <p class="footer-note">
-        If <strong>Copy</strong> fails, use a local server (<code>python3 -m http.server</code>) so the clipboard works. For AI generation on GitHub Pages, configure the
-        <strong>Netlify function URL</strong> above — see <code>netlify/functions/microcopy.js</code> in this repo.
-      </p>
     </main>
 
     <script>
       (function () {
         var GUIDE_FILES = ["style-tone-basics.md", "ui-elements.md", "glossary.md"];
-        var PROXY_STORAGE = "uxct_proxy_url";
+        var API_URL = location.origin + "/.netlify/functions/microcopy";
 
         var message = document.getElementById("message");
         var context = document.getElementById("context");
         var goal = document.getElementById("goal");
         var draft = document.getElementById("draft");
         var outputShape = document.getElementById("output-shape");
-        var proxyUrlInput = document.getElementById("proxy-url");
-        var apiKeyInput = document.getElementById("api-key");
-        var modelSelect = document.getElementById("model");
         var btnGenerate = document.getElementById("btn-generate");
         var btnClear = document.getElementById("btn-clear");
         var toast = document.getElementById("toast");
@@ -192,17 +151,6 @@
         var outFigma = document.getElementById("out-figma");
         var outSlack = document.getElementById("out-slack");
         var outAll = document.getElementById("out-all");
-
-        try {
-          var saved = localStorage.getItem(PROXY_STORAGE);
-          if (saved) proxyUrlInput.value = saved;
-        } catch (e) {}
-
-        proxyUrlInput.addEventListener("change", function () {
-          try {
-            localStorage.setItem(PROXY_STORAGE, proxyUrlInput.value.trim());
-          } catch (e) {}
-        });
 
         async function loadGuidesMarkdown() {
           var chunks = [];
@@ -213,14 +161,6 @@
             chunks.push("# File: " + name + "\n\n" + (await res.text()));
           }
           return chunks.join("\n\n---\n\n");
-        }
-
-        function resolveApiUrl() {
-          var custom = proxyUrlInput.value.trim();
-          if (custom) {
-            return custom.replace(/\/+$/, "");
-          }
-          return location.origin + "/.netlify/functions/microcopy";
         }
 
         function copyText(text, okMsg) {
@@ -252,15 +192,14 @@
             toast.textContent = "Loading style guides…";
             var guidesMarkdown = await loadGuidesMarkdown();
 
-            var apiUrl = resolveApiUrl();
             toast.textContent = "Generating microcopy…";
 
-            var res = await fetch(apiUrl, {
+            var res = await fetch(API_URL, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                openaiKey: apiKeyInput.value.trim(),
-                model: modelSelect.value,
+                openaiKey: "",
+                model: "gpt-4o-mini",
                 message: msg,
                 context: context.value.trim(),
                 goal: goal.value.trim(),
@@ -274,7 +213,7 @@
             try {
               data = await res.json();
             } catch (e) {
-              throw new Error("Bad response from API (not JSON). Is the Netlify function URL correct?");
+              throw new Error("Could not read the response. Try again in a moment.");
             }
 
             if (!res.ok) {
@@ -287,7 +226,7 @@
             var all = (data.all || "=== FIGMA-STYLE ===\n\n" + figma + "\n\n=== SLACK / PLAIN ===\n\n" + slack).trim();
 
             if (!figma && !slack) {
-              throw new Error("Empty result from model.");
+              throw new Error("Empty result. Try adjusting your message or context.");
             }
 
             outFigma.textContent = figma;
