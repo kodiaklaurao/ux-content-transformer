@@ -70,7 +70,7 @@ exports.handler = async function (event) {
     "Transform the user's rough inputs into polished, production-ready microcopy.\n\n" +
     "Apply the STYLE GUIDES in the next message exactly: voice, terminology, UI patterns, " +
     "component-appropriate length (modal vs info box vs button), sentence case, button rules (verb first, 1–3 words, no generic OK/Yes/Submit unless clearly justified), " +
-    "Kodiak Hub naming, glossary terms for modules. When context indicates BJÖRN (AI) copy, follow BJÖRN-specific rules over general marketing voice where they conflict.\n\n" +
+    "Kodiak Hub naming, glossary terms for modules.\n\n" +
     "Write only the final strings a user would see in the product — no lecture, no \"here is your copy\" meta text.\n\n" +
     "Respond with ONLY valid JSON (no markdown fences) matching this shape:\n" +
     '{"figma_block":"string","slack_block":"string"}\n' +
