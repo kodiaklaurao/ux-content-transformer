@@ -1,6 +1,6 @@
 /**
- * Proxies OpenAI so the browser can get CORS-friendly microcopy generation.
- * Set OPENAI_API_KEY in Netlify Site settings → Environment variables (optional if clients always send a key).
+ * Server-side proxy for microcopy generation (OpenAI).
+ * Set OPENAI_API_KEY in the host’s environment (optional if the client sends openaiKey).
  */
 
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
@@ -46,7 +46,7 @@ exports.handler = async function (event) {
       statusCode: 400,
       headers: corsHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
-        error: "Missing OpenAI key. Add OPENAI_API_KEY in Netlify env, or send openaiKey in the request body.",
+        error: "Missing OpenAI key. Set OPENAI_API_KEY on the server, or send openaiKey in the request body.",
       }),
     };
   }
