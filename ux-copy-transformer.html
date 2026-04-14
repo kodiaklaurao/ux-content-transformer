@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <title>Content transformer — Kodiak Hub</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Syne:wght@600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="header">
+        <h1>Content transformer</h1>
+        <p class="lede">
+          Fill in <strong>message</strong>, <strong>context</strong>, and <strong>goal</strong>, then copy the block into Cursor with the style guides.
+        </p>
+      </header>
+
+      <form id="intake-form" novalidate>
+        <div class="form-section">
+          <h2>Message</h2>
+          <p class="hint">
+            What is the ask? What should readers know, think, or feel?
+          </p>
+          <label class="visually-hidden" for="message">Message</label>
+          <textarea
+            id="message"
+            name="message"
+            rows="5"
+            placeholder="Describe the core message…"
+            required
+          ></textarea>
+        </div>
+
+        <div class="form-section">
+          <h2>Context</h2>
+          <p class="hint">
+            Copy type, UI limits, where it appears, prior step, last action and label, likely mindset — anything that changes how we write.
+          </p>
+          <label class="visually-hidden" for="context">Context</label>
+          <textarea
+            id="context"
+            name="context"
+            rows="8"
+            placeholder="e.g. Modal · max 40 chars title · draft just deleted · anxious…"
+          ></textarea>
+        </div>
+
+        <div class="form-section">
+          <h2>Goal</h2>
+          <p class="hint">
+            Desired next action in the product: the concrete task or decision.
+          </p>
+          <label class="visually-hidden" for="goal">Goal</label>
+          <textarea
+            id="goal"
+            name="goal"
+            rows="4"
+            placeholder="e.g. Confirm delete · go to assessments list…"
+          ></textarea>
+        </div>
+
+        <div class="form-section">
+          <h2>Optional</h2>
+          <p class="hint">Rough or legacy copy to transform, and the shape of output needed.</p>
+          <label class="visually-hidden" for="draft">Draft to transform</label>
+          <textarea
+            id="draft"
+            name="draft"
+            rows="4"
+            placeholder="Draft / existing copy to transform (optional)"
+          ></textarea>
+          <label class="visually-hidden" for="output-shape">Output shape</label>
+          <textarea
+            id="output-shape"
+            name="output-shape"
+            rows="2"
+            style="margin-top: 0.75rem"
+            placeholder="Output format (optional): e.g. title + primary button + helper line"
+          ></textarea>
+        </div>
+
+        <div class="actions">
+          <button type="button" id="btn-copy">Copy prompt</button>
+          <button type="reset" class="secondary" id="btn-clear">Clear</button>
+          <span id="toast" role="status" aria-live="polite"></span>
+        </div>
+      </form>
+
+      <p class="footer-note">
+        BJÖRN-specific copy: follow <code>bjorn-specific-instructions.md</code> where it conflicts with
+        <code>style-tone-basics.md</code>. Otherwise use style, UI, and glossary guides in your Cursor chat.
+        If <strong>Copy prompt</strong> does nothing, open this folder with a local server (e.g. <code>python3 -m http.server</code>) — some browsers block clipboard on <code>file://</code>.
+      </p>
+    </main>
+
+    <script>
+      (function () {
+        var message = document.getElementById("message");
+        var context = document.getElementById("context");
+        var goal = document.getElementById("goal");
+        var draft = document.getElementById("draft");
+        var outputShape = document.getElementById("output-shape");
+        var btnCopy = document.getElementById("btn-copy");
+        var toast = document.getElementById("toast");
+
+        function buildBlock() {
+          var parts = [];
+          parts.push("message:");
+          parts.push(message.value.trim() || "[add message]");
+          parts.push("");
+          parts.push("context:");
+          parts.push(context.value.trim() || "[add context]");
+          parts.push("");
+          parts.push("goal:");
+          parts.push(goal.value.trim() || "[add goal]");
+          var d = draft.value.trim();
+          var o = outputShape.value.trim();
+          if (d) {
+            parts.push("");
+            parts.push("Draft / existing copy to transform:");
+            parts.push(d);
+          }
+          if (o) {
+            parts.push("");
+            parts.push("Output I need:");
+            parts.push(o);
+          }
+          return parts.join("\n");
+        }
+
+        btnCopy.addEventListener("click", function () {
+          toast.textContent = "";
+          toast.classList.remove("success");
+          var text = buildBlock();
+          if (!message.value.trim()) {
+            message.focus();
+            toast.textContent = "Add a message before copying.";
+            return;
+          }
+          navigator.clipboard.writeText(text).then(
+            function () {
+              toast.textContent = "Copied — paste into Cursor with @ guides.";
+              toast.classList.add("success");
+            },
+            function () {
+              toast.textContent = "Could not copy. Select and copy manually.";
+            }
+          );
+        });
+
+        document.getElementById("btn-clear").addEventListener("click", function () {
+          toast.textContent = "";
+          toast.classList.remove("success");
+        });
+      })();
+    </script>
+  </body>
+</html>
